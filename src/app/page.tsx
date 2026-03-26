@@ -313,7 +313,7 @@ export default function Home() {
               <li>&#10003; Bio history & favorites</li>
               <li>&#10003; Export as image for sharing</li>
             </ul>
-            <a href="#" className="btn-primary block w-full text-center">
+            <a href="https://buy.stripe.com/test_fZu00l0uK5z17hsdTfak000" target="_blank" rel="noopener noreferrer" className="btn-primary block w-full text-center">
               Get Pro Access
             </a>
           </div>
