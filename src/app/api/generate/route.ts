@@ -2,6 +2,7 @@ import { generateText, LlmBusy } from "@/lib/llm";
 import { buildDeps, ipSalt, NotConfigured } from "@/lib/deps";
 import { checkPro, consumeFree, peekFree, FREE_LIMIT } from "@/lib/entitlement";
 import { acceptBios, buildPrompt } from "@/lib/prompt";
+import { bumpMetric } from "@/lib/metrics";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -49,10 +50,12 @@ export async function POST(request: NextRequest) {
   try {
     const text = await generateText(buildPrompt({ platform, role, skills, tone, extras, options: pro.pro ? 5 : 3 }), { accept: acceptBios });
     if (!pro.pro) remaining = (await consumeFree(ip, ipSalt(), deps)).remaining; // count only a success
+    await bumpMetric(deps.kv, deps.product, "gen", deps.now()); // usage counter (best effort)
     return NextResponse.json({ bios: text, remaining, pro: pro.pro });
   } catch (err) {
     console.error("Generation error:", err);
     if (err instanceof LlmBusy) {
+      await bumpMetric(deps.kv, deps.product, "busy", deps.now());
       // The free AI capacity is spent or saturated right now: say so plainly (no free use was counted).
       return NextResponse.json({ error: "The AI service is busy right now - please try again in a few minutes.", busy: true }, { status: 503 });
     }
