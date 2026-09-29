@@ -1,4 +1,4 @@
-import { generateText } from "@/lib/llm";
+import { generateText, LlmBusy } from "@/lib/llm";
 import { buildDeps, ipSalt, NotConfigured } from "@/lib/deps";
 import { checkPro, consumeFree, peekFree, FREE_LIMIT } from "@/lib/entitlement";
 import { buildPrompt } from "@/lib/prompt";
@@ -52,6 +52,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ bios: text, remaining, pro: pro.pro });
   } catch (err) {
     console.error("Generation error:", err);
+    if (err instanceof LlmBusy) {
+      // The free AI capacity is spent or saturated right now: say so plainly (no free use was counted).
+      return NextResponse.json({ error: "The AI service is busy right now - please try again in a few minutes.", busy: true }, { status: 503 });
+    }
     return NextResponse.json({ error: "Failed to generate bio. Please try again." }, { status: 500 });
   }
 }
