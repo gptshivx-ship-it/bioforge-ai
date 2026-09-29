@@ -33,3 +33,10 @@ Generate exactly ${r.options} different bio options, from most professional to m
 Format as:
 ${format}`;
 }
+
+// Output check for generateText: the bios from the first "OPTION 1" on (a preamble or leaked model thinking is cut),
+// or null when there is no OPTION 1 at all - the chain then tries the next model.
+export function acceptBios(text: string): string | null {
+  const m = /(\*\*)?OPTION 1\b/i.exec(text);
+  return m ? text.slice(m.index).trim() : null;
+}

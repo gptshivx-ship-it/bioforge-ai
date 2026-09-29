@@ -1,7 +1,7 @@
 import { generateText, LlmBusy } from "@/lib/llm";
 import { buildDeps, ipSalt, NotConfigured } from "@/lib/deps";
 import { checkPro, consumeFree, peekFree, FREE_LIMIT } from "@/lib/entitlement";
-import { buildPrompt } from "@/lib/prompt";
+import { acceptBios, buildPrompt } from "@/lib/prompt";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const text = await generateText(buildPrompt({ platform, role, skills, tone, extras, options: pro.pro ? 5 : 3 }));
+    const text = await generateText(buildPrompt({ platform, role, skills, tone, extras, options: pro.pro ? 5 : 3 }), { accept: acceptBios });
     if (!pro.pro) remaining = (await consumeFree(ip, ipSalt(), deps)).remaining; // count only a success
     return NextResponse.json({ bios: text, remaining, pro: pro.pro });
   } catch (err) {
