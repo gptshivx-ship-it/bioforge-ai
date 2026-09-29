@@ -343,7 +343,10 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto px-4 py-8 text-center text-sm" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
-        <p>BioForge &mdash; AI-powered bio generator. Built with care.</p>
+        <p>BioForge &mdash; AI-powered bio generator by ShivX Labs.</p>
+        <p className="mt-1">
+          Support: <a href="mailto:gptshivx@gmail.com">gptshivx@gmail.com</a> &middot; Card statements show SHIVX LABS.
+        </p>
       </footer>
     </main>
   );
