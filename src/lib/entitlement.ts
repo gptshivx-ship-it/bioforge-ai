@@ -1,4 +1,4 @@
-// BioForge Pro entitlement: server-side Stripe Checkout -> signature-verified webhook -> HMAC licence in durable KV.
+// Pro entitlement (shared by BioForge = one-time, CourseForge = subscription): server-side Stripe Checkout -> signature-verified webhook -> HMAC licence in durable KV.
 // Every secret comes from the environment. This repository is PUBLIC: never commit a key, a webhook secret or a
 // licence secret. Design: shivx-core docs/ops/DIGITAL_CCEO_RELAUNCH_DESIGN_2026-09-30.md
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
@@ -59,8 +59,10 @@ export interface Deps {
   kv: KV;
   webhookSecret: string;
   licenceSecret: string;
-  product: string; // "bioforge_pro"
+  product: string; // "bioforge_pro" | "courseforge_pro"
   priceId: string;
+  mode?: "payment" | "subscription"; // default "payment"
+  freeLimit?: number; // free generations per hashed IP per day; default FREE_LIMIT
   now: () => number;
   newId: () => string;
 }
@@ -120,6 +122,19 @@ export async function handleWebhook(raw: string, sig: string | null, d: Deps): P
         await d.kv.set(`lic:${lid}`, JSON.stringify({ status: "active", product: d.product, session: obj.id, token }));
         await d.kv.set(`sess:${obj.id}`, lid);
         if (obj.payment_intent) await d.kv.set(`pi:${obj.payment_intent}`, lid);
+        if (obj.subscription) await d.kv.set(`sub:${obj.subscription}`, lid);
+      }
+    } else if (event.type === "customer.subscription.deleted" || event.type === "customer.subscription.updated") {
+      // The subscription's own status drives access: active/trialing = Pro; anything else (canceled, unpaid,
+      // past_due, incomplete_expired, deleted) = revoked. Re-activation restores it.
+      const lid = obj.id ? await d.kv.get(`sub:${obj.id}`) : null;
+      if (lid) {
+        const live = event.type === "customer.subscription.updated" && ["active", "trialing"].includes(obj.status);
+        const rec = JSON.parse((await d.kv.get(`lic:${lid}`)) ?? "{}");
+        await d.kv.set(
+          `lic:${lid}`,
+          JSON.stringify({ ...rec, status: live ? "active" : "revoked", revoked_reason: live ? undefined : `subscription_${obj.status ?? "deleted"}` })
+        );
       }
     } else if (event.type === "charge.refunded") {
       const lid = obj.payment_intent ? await d.kv.get(`pi:${obj.payment_intent}`) : null;
@@ -189,8 +204,9 @@ export async function consumeFree(ip: string, salt: string, d: Deps): Promise<{ 
   try {
     const n = await d.kv.incr(key);
     if (n === 1) await d.kv.expire(key, 36 * 3600);
-    if (n > FREE_LIMIT) return { allowed: false, remaining: 0, reason: "daily_limit" };
-    return { allowed: true, remaining: FREE_LIMIT - n, reason: "" };
+    const limit = d.freeLimit ?? FREE_LIMIT;
+    if (n > limit) return { allowed: false, remaining: 0, reason: "daily_limit" };
+    return { allowed: true, remaining: limit - n, reason: "" };
   } catch {
     return { allowed: false, remaining: 0, reason: "kv_unavailable" };
   }
@@ -199,13 +215,16 @@ export async function consumeFree(ip: string, salt: string, d: Deps): Promise<{ 
 // ---- checkout ------------------------------------------------------------------------------------------------------
 
 export async function createCheckout(origin: string, d: Deps): Promise<Result> {
+  const mode = d.mode ?? "payment";
   const params = {
-    mode: "payment",
+    mode,
     line_items: [{ price: d.priceId, quantity: 1 }],
     success_url: `${origin}/pro?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${origin}/`,
     metadata: { shivx_product: d.product },
-    payment_intent_data: { metadata: { shivx_product: d.product } },
+    ...(mode === "subscription"
+      ? { subscription_data: { metadata: { shivx_product: d.product } } }
+      : { payment_intent_data: { metadata: { shivx_product: d.product } } }),
   };
   try {
     const s = await d.stripe.checkout.sessions.create(params);
