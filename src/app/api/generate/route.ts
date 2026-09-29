@@ -1,88 +1,54 @@
 import { generateText } from "@/lib/llm";
+import { buildDeps, ipSalt, NotConfigured } from "@/lib/deps";
+import { checkPro, consumeFree, FREE_LIMIT } from "@/lib/entitlement";
+import { buildPrompt } from "@/lib/prompt";
 import { NextRequest, NextResponse } from "next/server";
 
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-const FREE_LIMIT = 5;
-const WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-function getRateLimit(ip: string) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 0, resetAt: now + WINDOW_MS });
-    return { count: 0, limited: false };
-  }
-  return { count: entry.count, limited: entry.count >= FREE_LIMIT };
-}
-
-function incrementRate(ip: string) {
-  const entry = rateLimitMap.get(ip);
-  if (entry) entry.count++;
-}
+export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    "unknown";
-  const { limited, count } = getRateLimit(ip);
-
-  if (limited) {
-    return NextResponse.json(
-      {
-        error: "Daily limit reached",
-        message:
-          "You've used all 5 free generations today. Upgrade for unlimited access!",
-        remaining: 0,
-      },
-      { status: 429 }
-    );
+  let deps;
+  try {
+    deps = buildDeps();
+  } catch (e) {
+    const msg = e instanceof NotConfigured ? "Service is being configured - please try again later." : "Service unavailable.";
+    return NextResponse.json({ error: msg }, { status: 503 });
   }
 
   const { platform, role, skills, tone, extras } = await request.json();
-
   if (!platform || !role) {
-    return NextResponse.json(
-      { error: "Platform and role are required" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "Platform and role are required" }, { status: 400 });
   }
 
-  const prompt = `Generate a compelling, scroll-stopping social media bio for ${platform}.
-
-ABOUT THE PERSON:
-- Role/Title: ${role}
-- Key Skills/Expertise: ${skills || "not specified"}
-- Desired Tone: ${tone || "professional yet approachable"}
-- Extra Details: ${extras || "none"}
-
-REQUIREMENTS:
-- Optimized specifically for ${platform}'s format and character limits
-- Include relevant emojis if appropriate for the platform
-- Make it memorable and unique — avoid generic phrases like "passionate about"
-- Include a subtle call-to-action if appropriate
-- For LinkedIn: professional, keyword-rich, 200-300 chars
-- For Twitter/X: witty, concise, under 160 chars
-- For Instagram: personality-driven, with line breaks and emojis, under 150 chars
-- For TikTok: casual, trend-aware, under 80 chars
-- For GitHub: technical, concise, under 160 chars
-- For personal website: longer, story-driven, 2-3 sentences
-
-Generate exactly 3 different bio options, from most professional to most creative.
-Format as:
-OPTION 1:
-[bio text]
-
-OPTION 2:
-[bio text]
-
-OPTION 3:
-[bio text]`;
+  const pro = await checkPro(request.headers.get("authorization"), deps);
+  let remaining: number | null = null;
+  if (!pro.pro) {
+    // A presented-but-rejected licence is said plainly, never silently downgraded.
+    if (pro.reason === "kv_unavailable") {
+      return NextResponse.json({ error: "Service busy - please try again shortly." }, { status: 503 });
+    }
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const free = await consumeFree(ip, ipSalt(), deps);
+    if (!free.allowed) {
+      if (free.reason === "kv_unavailable") {
+        return NextResponse.json({ error: "Service busy - please try again shortly." }, { status: 503 });
+      }
+      return NextResponse.json(
+        {
+          error: "Daily limit reached",
+          message: `You've used all ${FREE_LIMIT} free generations today. Upgrade for unlimited access!`,
+          remaining: 0,
+          licence_problem: pro.reason === "no_licence" ? undefined : pro.reason,
+        },
+        { status: 429 }
+      );
+    }
+    remaining = free.remaining;
+  }
 
   try {
-    const text = await generateText(prompt);
-    incrementRate(ip);
-    return NextResponse.json({ bios: text, remaining: FREE_LIMIT - count - 1 });
+    const text = await generateText(buildPrompt({ platform, role, skills, tone, extras, options: pro.pro ? 5 : 3 }));
+    return NextResponse.json({ bios: text, remaining, pro: pro.pro });
   } catch (err) {
     console.error("Generation error:", err);
     return NextResponse.json({ error: "Failed to generate bio. Please try again." }, { status: 500 });

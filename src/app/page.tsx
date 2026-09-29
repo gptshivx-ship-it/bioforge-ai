@@ -31,6 +31,25 @@ export default function Home() {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [buying, setBuying] = useState(false);
+
+  async function startCheckout() {
+    setBuying(true);
+    setError("");
+    try {
+      const res = await fetch("/api/checkout", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setError(data.error || "Checkout is unavailable right now.");
+    } catch {
+      setError("Checkout is unavailable right now.");
+    } finally {
+      setBuying(false);
+    }
+  }
 
   async function handleGenerate() {
     if (!platform || !role) return;
@@ -39,9 +58,16 @@ export default function Home() {
     setResult("");
 
     try {
+      let licence = "";
+      try {
+        licence = localStorage.getItem("bioforge_licence") || "";
+      } catch {}
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(licence ? { Authorization: `Licence ${licence}` } : {}),
+        },
         body: JSON.stringify({ platform, role, skills, tone, extras }),
       });
       const data = await res.json();
@@ -298,9 +324,6 @@ export default function Home() {
           <div className="card p-6" style={{ border: "1px solid rgba(139,92,246,0.5)" }}>
             <div className="flex items-center justify-between mb-1">
               <h3 className="font-semibold text-lg">Pro</h3>
-              <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(109,40,217,0.3)", color: "#a78bfa" }}>
-                Popular
-              </span>
             </div>
             <p className="text-3xl font-bold mb-4">
               $19 <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>one-time</span>
@@ -309,13 +332,11 @@ export default function Home() {
               <li>&#10003; Unlimited generations</li>
               <li>&#10003; All platforms</li>
               <li>&#10003; 5 bio options per generation</li>
-              <li>&#10003; Brand voice customization</li>
-              <li>&#10003; Bio history & favorites</li>
-              <li>&#10003; Export as image for sharing</li>
+              <li>&#10003; Copy to clipboard</li>
             </ul>
-            <a href="https://buy.stripe.com/fZu00l0uK5z17hsdTfak000" target="_blank" rel="noopener noreferrer" className="btn-primary block w-full text-center">
-              Get Pro Access
-            </a>
+            <button onClick={startCheckout} disabled={buying} className="btn-primary block w-full text-center">
+              {buying ? "Opening checkout…" : "Get Pro Access"}
+            </button>
           </div>
         </div>
       </section>
