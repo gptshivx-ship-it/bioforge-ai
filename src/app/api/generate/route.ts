@@ -1,6 +1,6 @@
 import { generateText } from "@/lib/llm";
 import { buildDeps, ipSalt, NotConfigured } from "@/lib/deps";
-import { checkPro, consumeFree, FREE_LIMIT } from "@/lib/entitlement";
+import { checkPro, consumeFree, peekFree, FREE_LIMIT } from "@/lib/entitlement";
 import { buildPrompt } from "@/lib/prompt";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -22,13 +22,13 @@ export async function POST(request: NextRequest) {
 
   const pro = await checkPro(request.headers.get("authorization"), deps);
   let remaining: number | null = null;
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   if (!pro.pro) {
     // A presented-but-rejected licence is said plainly, never silently downgraded.
     if (pro.reason === "kv_unavailable") {
       return NextResponse.json({ error: "Service busy - please try again shortly." }, { status: 503 });
     }
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-    const free = await consumeFree(ip, ipSalt(), deps);
+    const free = await peekFree(ip, ipSalt(), deps);
     if (!free.allowed) {
       if (free.reason === "kv_unavailable") {
         return NextResponse.json({ error: "Service busy - please try again shortly." }, { status: 503 });
@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const text = await generateText(buildPrompt({ platform, role, skills, tone, extras, options: pro.pro ? 5 : 3 }));
+    if (!pro.pro) remaining = (await consumeFree(ip, ipSalt(), deps)).remaining; // count only a success
     return NextResponse.json({ bios: text, remaining, pro: pro.pro });
   } catch (err) {
     console.error("Generation error:", err);
