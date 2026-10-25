@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Daily limit reached",
-          message: `You've used all ${FREE_LIMIT} free generations today. Upgrade for unlimited access!`,
+          message: `You've used all ${FREE_LIMIT} free generations today. Try again tomorrow, or see Pro for a higher personal allowance.`,
           remaining: 0,
           licence_problem: pro.reason === "no_licence" ? undefined : pro.reason,
         },

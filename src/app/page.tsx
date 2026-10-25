@@ -235,7 +235,7 @@ export default function Home() {
             <p className="text-red-400">{error}</p>
             {error.includes("limit") && (
               <a href="#pricing" className="text-purple-400 underline mt-2 inline-block">
-                Get unlimited access &rarr;
+                See Pro &rarr;
               </a>
             )}
           </div>
@@ -302,10 +302,10 @@ export default function Home() {
       {/* Pricing */}
       <section id="pricing" className="max-w-4xl mx-auto px-4 py-16">
         <h2 className="text-3xl font-bold text-center mb-4">
-          Go <span className="gradient-text">Unlimited</span>
+          Go <span className="gradient-text">Pro</span>
         </h2>
         <p className="text-center mb-12" style={{ color: "var(--muted)" }}>
-          Remove limits and unlock premium features.
+          Remove your personal daily limit and get more bio options.
         </p>
         <div className="grid md:grid-cols-2 gap-6 max-w-2xl mx-auto">
           <div className="card p-6">
@@ -329,7 +329,7 @@ export default function Home() {
               $19 <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>one-time</span>
             </p>
             <ul className="space-y-2 text-sm mb-6" style={{ color: "var(--muted)" }}>
-              <li>&#10003; Unlimited generations</li>
+              <li>&#10003; No personal daily limit</li>
               <li>&#10003; All platforms</li>
               <li>&#10003; 5 bio options per generation</li>
               <li>&#10003; Copy to clipboard</li>
@@ -339,6 +339,9 @@ export default function Home() {
             </button>
           </div>
         </div>
+        <p className="text-center text-sm mt-6" style={{ color: "var(--muted)" }}>
+          Generations run on free AI models whose combined daily allowance is capped (about 50 requests per day, shared by everyone). When it is used up, generation pauses until the next day and no free use is counted.
+        </p>
       </section>
 
       {/* Footer */}
